@@ -13,3 +13,9 @@ pip install -r requirements.txt
 ```sh
 python ctm.py
 ```
+
+## Generated samples
+
+<figure>
+<img src="p_0_hat.png">
+</figure>
