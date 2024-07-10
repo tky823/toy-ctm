@@ -17,5 +17,5 @@ python ctm.py
 ## Generated samples
 
 <figure>
-<img src="p_0_hat.png">
+<img src="static/p_0_hat.png">
 </figure>
