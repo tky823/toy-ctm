@@ -23,8 +23,8 @@ def main() -> None:
     iterations = 2000
     batch_size = 2048
 
-    model = Denoiser(max_step=T)
-    optimizer = optim.Adam(model.parameters())
+    dm = Denoiser(max_step=T)
+    optimizer = optim.Adam(dm.parameters())
     loss = []
 
     for _ in tqdm(range(iterations)):
@@ -34,7 +34,7 @@ def main() -> None:
         step = T * torch.rand((batch_size,))
         noise = step.unsqueeze(dim=-1) * torch.randn_like(x_0)
         x_t = x_0 + noise
-        output = model(x_t, step=step)
+        output = dm(x_t, step=step)
         loss_per_iter = torch.mean((x_0 - output) ** 2)
 
         optimizer.zero_grad()
@@ -47,7 +47,7 @@ def main() -> None:
 
     # training of student model
     delta = 0.05
-    solver = Solver(model, delta=delta)
+    solver = Solver(dm, delta=delta)
     solver.eval()
 
     ctm = ConsistencyTrajectoryModel(max_step=T)
