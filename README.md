@@ -1,6 +1,6 @@
 # toy-ctm
 
-Toy example of consistency trajectory model
+Toy example of consistency trajectory model (CTM)
 
 ## Requirements
 
