@@ -17,9 +17,9 @@ python main.py
 ## Generated samples
 
 <figure>
-<img src="static/p_0_hat_gmm.png">
+<img src="static/gmm/p_0_hat.png">
 </figure>
 
 <figure>
-<img src="static/p_0_hat_roll.png">
+<img src="static/roll/p_0_hat.png">
 </figure>
