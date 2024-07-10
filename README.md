@@ -11,7 +11,7 @@ pip install -r requirements.txt
 ## How to run
 
 ```sh
-python ctm.py
+python main.py
 ```
 
 ## Generated samples
