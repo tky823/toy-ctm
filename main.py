@@ -12,10 +12,11 @@ def main() -> None:
     torch.manual_seed(0)
 
     num_samples = 1000
+    dist = "gmm"  # "gmm" or "roll"
     T = 10
 
     # pseudo statistics of distributions
-    x_0 = create_2d_samples(num_samples=num_samples)
+    x_0 = create_2d_samples(num_samples=num_samples, dist=dist)
     data_std, data_mean = torch.std_mean(x_0, dim=0)
     data_std = data_std / T
 
@@ -28,7 +29,7 @@ def main() -> None:
     loss = []
 
     for _ in tqdm(range(iterations)):
-        x_0 = create_2d_samples(num_samples=batch_size)
+        x_0 = create_2d_samples(num_samples=batch_size, dist=dist)
         x_0 = (x_0 - data_mean) / data_std
 
         step = T * torch.rand((batch_size,))
@@ -57,7 +58,7 @@ def main() -> None:
     loss = []
 
     for _ in tqdm(range(iterations)):
-        x_0 = create_2d_samples(num_samples=batch_size)
+        x_0 = create_2d_samples(num_samples=batch_size, dist=dist)
         x_0 = (x_0 - data_mean) / data_std
 
         t = T * torch.rand(()).item()
@@ -102,7 +103,7 @@ def main() -> None:
 
     with torch.no_grad():
         x_0 = create_2d_samples(
-            num_samples=num_samples
+            num_samples=num_samples, dist=dist
         )  # dummy samples to obtain tensor size
         x_T = T * torch.randn_like(x_0)
 
@@ -115,14 +116,14 @@ def main() -> None:
 
     with torch.no_grad():
         x_0 = create_2d_samples(
-            num_samples=num_samples
+            num_samples=num_samples, dist=dist
         )  # dummy samples to obtain tensor size
         x_T = T * torch.randn_like(x_0)
         step = torch.full((num_samples,), fill_value=T)
         target_step = torch.full((num_samples,), fill_value=0)
         x_0_hat_ctm = ctm(x_T, step=step, target_step=target_step)
 
-    x_0 = create_2d_samples(num_samples=num_samples)
+    x_0 = create_2d_samples(num_samples=num_samples, dist=dist)
     x_0 = (x_0 - data_mean) / data_std
     vmax = max(
         torch.max(torch.abs(x_0_hat_teacher)).item(),
