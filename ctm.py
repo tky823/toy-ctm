@@ -1,159 +1,60 @@
-import matplotlib.pyplot as plt
+import math
+
 import torch
-from torch import optim
-from tqdm import tqdm
-
-from utils import (
-    ConsistencyTrajectoryModel,
-    Denoiser,
-    Solver,
-    create_2d_samples,
-    plot_loss,
-)
+import torch.nn as nn
 
 
-def main() -> None:
-    torch.manual_seed(0)
+class ConsistencyTrajectoryModel(nn.Module):
+    """Consistency trajectory model.
 
-    num_samples = 1000
-    T = 10
+    Args:
+        max_step (float): Max step of diffusion process.
 
-    # pseudo statistics of distributions
-    x_0 = create_2d_samples(num_samples=num_samples)
-    data_std, data_mean = torch.std_mean(x_0, dim=0)
-    data_std = data_std / T
+    """
 
-    # training of teacher model
-    iterations = 2000
-    batch_size = 2048
+    def __init__(self, max_step: int) -> None:
+        super().__init__()
 
-    model = Denoiser(max_step=T)
-    optimizer = optim.Adam(model.parameters())
-    loss = []
+        self.max_step = max_step
 
-    for _ in tqdm(range(iterations)):
-        x_0 = create_2d_samples(num_samples=batch_size)
-        x_0 = (x_0 - data_mean) / data_std
+        in_features = 2
 
-        step = T * torch.rand((batch_size,))
-        noise = step.unsqueeze(dim=-1) * torch.randn_like(x_0)
-        x_t = x_0 + noise
-        output = model(x_t, step=step)
-        loss_per_epoch = torch.mean((x_0 - output) ** 2)
+        self.linear1 = nn.Linear(in_features + 2, 64)
+        self.relu1 = nn.ReLU()
+        self.linear2 = nn.Linear(64, 64)
+        self.relu2 = nn.ReLU()
+        self.linear3 = nn.Linear(64, 64)
+        self.relu3 = nn.ReLU()
+        self.linear4 = nn.Linear(64, in_features)
 
-        optimizer.zero_grad()
-        loss_per_epoch.backward()
-        optimizer.step()
+    def forward(
+        self, input: torch.Tensor, step: torch.Tensor, target_step: torch.Tensor
+    ) -> torch.Tensor:
+        """Forward pass of ConsistencyTrajectoryModel.
 
-        loss.append(loss_per_epoch.item())
+        Args:
+            input (torch.Tensor): Noisy input of shape (batch_size, in_features).
+            step (torch.Tensor): Step in diffusion process of shape (batch_size,).
+            target_step (torch.Tensor): Target step in diffusion process of shape (batch_size,).
 
-    plot_loss(loss, "loss_teacher.png")
+        Returns:
+            torch.Tensor: Estimated data at target step of shape (batch_size, in_features).
 
-    # training of student model
-    delta = 0.05
-    solver = Solver(model, delta=delta)
-    solver.eval()
+        """
+        normalized_input = input / (math.sqrt(2) * self.max_step)
+        normalized_step = step / self.max_step
+        normalized_step = normalized_step.unsqueeze(dim=-1)
+        normalized_target_step = target_step / self.max_step
+        normalized_target_step = normalized_target_step.unsqueeze(dim=-1)
+        x = torch.cat(
+            [normalized_input, normalized_step, normalized_target_step], dim=-1
+        )
+        x = self.linear1(x)
+        x = self.relu1(x)
+        x = self.linear2(x)
+        x = self.relu2(x)
+        x = self.linear3(x)
+        x = self.relu3(x)
+        output = (math.sqrt(2) * self.max_step) * self.linear4(x)
 
-    ctm = ConsistencyTrajectoryModel(max_step=T)
-    optimizer = optim.Adam(ctm.parameters())
-    loss_ctm = []
-    loss_dsm = []
-    loss = []
-
-    for _ in tqdm(range(iterations)):
-        x_0 = create_2d_samples(num_samples=batch_size)
-        x_0 = (x_0 - data_mean) / data_std
-
-        t = T * torch.rand(()).item()
-        u = t * torch.rand(()).item()
-        target_step = u * torch.rand((batch_size,))  # corresponds to s
-
-        noise = step.unsqueeze(dim=-1) * torch.randn_like(x_0)
-        x_t = x_0 + noise
-
-        with torch.no_grad():
-            x_u = solver(x_t, t, u)
-            step = torch.full((batch_size,), fill_value=u)
-            output = ctm(x_u, step=step, target_step=target_step)
-            weight = target_step / step
-            weight = weight.unsqueeze(dim=-1)
-            x_s_teacher = weight * x_u + (1 - weight) * output
-
-        step = torch.full((batch_size,), fill_value=t)
-        output = ctm(x_t, step=step, target_step=target_step)
-        weight = target_step / step
-        weight = weight.unsqueeze(dim=-1)
-        x_s_student = weight * x_t + (1 - weight) * output
-
-        loss_ctm_per_epoch = torch.mean((x_s_teacher - x_s_student) ** 2)
-        loss_dsm_per_epoch = torch.mean(torch.abs(x_0 - output))
-        loss_per_epoch = loss_ctm_per_epoch + 10 * loss_dsm_per_epoch
-
-        optimizer.zero_grad()
-        loss_per_epoch.backward()
-        optimizer.step()
-
-        loss_ctm.append(loss_ctm_per_epoch.item())
-        loss_dsm.append(loss_dsm_per_epoch.item())
-        loss.append(loss_per_epoch.item())
-
-    plot_loss(loss_ctm, "loss_ctm.png")
-    plot_loss(loss_dsm, "loss_dsm.png")
-    plot_loss(loss_dsm, "loss_student.png")
-
-    # generation by teacher model
-    solver.eval()
-
-    with torch.no_grad():
-        x_0 = create_2d_samples(
-            num_samples=num_samples
-        )  # dummy samples to obtain tensor size
-        x_T = T * torch.randn_like(x_0)
-
-        pbar = tqdm()
-        x_0_hat_teacher = solver(x_T, step=T, target_step=0, pbar=pbar)
-        pbar.clear()
-
-    # generation by student model
-    ctm.eval()
-
-    with torch.no_grad():
-        x_0 = create_2d_samples(
-            num_samples=num_samples
-        )  # dummy samples to obtain tensor size
-        x_T = T * torch.randn_like(x_0)
-        step = torch.full((num_samples,), fill_value=T)
-        target_step = torch.full((num_samples,), fill_value=0)
-        x_0_hat_ctm = ctm(x_T, step=step, target_step=target_step)
-
-    x_0 = create_2d_samples(num_samples=num_samples)
-    x_0 = (x_0 - data_mean) / data_std
-    vmax = max(
-        torch.max(torch.abs(x_0_hat_teacher)).item(),
-        torch.max(torch.abs(x_0_hat_ctm)).item(),
-        torch.max(torch.abs(x_0)).item(),
-    )
-
-    plt.figure(figsize=(8, 8))
-    plt.scatter(x_0[:, 0], x_0[:, 1], alpha=0.5, label="x_0")
-    plt.xlim(-vmax, vmax)
-    plt.ylim(-vmax, vmax)
-    plt.legend()
-    plt.savefig("p_0.png", bbox_inches="tight")
-    plt.close()
-
-    plt.figure(figsize=(8, 8))
-    plt.scatter(x_0[:, 0], x_0[:, 1], alpha=0.5, label="x_0")
-    plt.scatter(
-        x_0_hat_teacher[:, 0], x_0_hat_teacher[:, 1], alpha=0.5, label="x_0 (teacher)"
-    )
-    plt.scatter(x_0_hat_ctm[:, 0], x_0_hat_ctm[:, 1], alpha=0.5, label="x_0 (CTM)")
-    plt.xlim(-vmax, vmax)
-    plt.ylim(-vmax, vmax)
-    plt.legend()
-    plt.savefig("p_0_hat.png", bbox_inches="tight")
-    plt.close()
-
-
-if __name__ == "__main__":
-    main()
+        return output
